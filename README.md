@@ -1,6 +1,6 @@
 # Capacity Planner · Neroes
 
-Ferramenta de planeamento e análise de capacidade por semana (quarta→terça).
+Ferramenta de planeamento e análise de capacidade por semana (quarta→terça), com sincronização automática a partir do Motion.
 
 ---
 
@@ -14,7 +14,7 @@ Ferramenta de planeamento e análise de capacidade por semana (quarta→terça).
 ## 1 · Criar o projeto no Supabase
 
 1. Entra em [app.supabase.com](https://app.supabase.com) e clica **New project**.
-2. Escolhe um nome (ex. `neroes-capacity`) e uma palavra-passe forte para a base de dados.
+2. Escolhe um nome (ex. `neroes-capacity`) e uma palavra-passe para a base de dados.
 3. Seleciona a região mais próxima (ex. *West EU – Ireland*) e clica **Create new project**.
 4. Aguarda ~1 minuto até o projeto estar pronto.
 
@@ -22,95 +22,138 @@ Ferramenta de planeamento e análise de capacidade por semana (quarta→terça).
 
 ## 2 · Correr o schema.sql
 
-1. No painel do teu projeto, vai a **SQL Editor** (menu lateral).
-2. Clica **New query**.
-3. Abre o ficheiro `supabase/schema.sql` deste repositório, copia todo o conteúdo e cola no editor.
-4. Clica **Run** (ou `Ctrl+Enter`).
+1. No painel do teu projeto → **SQL Editor** → **New query**.
+2. Copia o conteúdo de `supabase/schema.sql` e cola.
+3. Clica **Run** (`Ctrl+Enter`).
 
-> O script cria as tabelas, ativa RLS, define políticas de acesso e insere os dados iniciais (pessoas, workspaces e fator de eficiência).
+Cria todas as tabelas, activa RLS e insere os dados iniciais (pessoas, workspaces, fator 0.85).
 
-### Usar sem autenticação (modo interno simples)
+### Uso sem autenticação (modo interno simples)
 
-Por defeito o schema usa RLS com `auth.role() = 'authenticated'`, o que exige login.  
-Se a equipa vai usar a app sem autenticação, antes de correr o schema:
-
-1. No ficheiro `supabase/schema.sql`, comenta o bloco **OPÇÃO A** e descomenta o bloco **OPÇÃO B**.
-2. Corre o script novamente.
-
-Alternativamente, podes desativar RLS completamente:
-
-```sql
-alter table people     disable row level security;
-alter table workspaces disable row level security;
-alter table settings   disable row level security;
-alter table entries    disable row level security;
-```
+No `schema.sql`, comenta o bloco **OPÇÃO A** e descomenta o bloco **OPÇÃO B**.
 
 ---
 
 ## 3 · Configurar o .env
 
-1. Vai a **Project Settings → API** no painel Supabase.
-2. Copia:
-   - **Project URL** → `VITE_SUPABASE_URL`
-   - **anon public** key → `VITE_SUPABASE_ANON_KEY`
-3. Na raiz do projeto, cria um ficheiro `.env`:
+1. **Project Settings → API** no painel Supabase.
+2. Copia **Project URL** e **anon public** key.
+3. Cria `.env` na raiz:
 
 ```
 VITE_SUPABASE_URL=https://xxxxxxxxxxxxxxxxxxxx.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-> O ficheiro `.env` está no `.gitignore` — nunca o commits.
-
 ---
 
-## 4 · Instalar dependências e arrancar a app
+## 4 · Instalar e arrancar
 
 ```bash
-cd capacity-planner
 npm install
 npm run dev
 ```
 
-Abre [http://localhost:5173](http://localhost:5173) no browser.
+Abre [http://localhost:5173](http://localhost:5173).
 
 ---
 
-## 5 · Build para produção
+## 5 · Painel de Administração
+
+Clica no ícone ⚙ no canto superior direito. PIN: **1008**
+
+- **Pessoas** — editar horas semanais e email (necessário para Motion)
+- **Workspaces** — CRUD completo com color picker
+- **Objetivos** — % objetivo por workspace por semana (override dos padrões)
+- **Motion** — mapeamento e sincronização (ver secção abaixo)
+- **Definições** — fator de eficiência global
+
+---
+
+## 6 · Integração Motion
+
+### Como funciona
+
+1. O Motion tem workspaces e tarefas com assignees e duração.
+2. Quando uma tarefa é marcada como concluída, a Edge Function `sync-motion` lê essa tarefa e cria um registo Real no Capacity Planner (horas = duração / 60, semana = quarta-feira da semana de conclusão).
+3. Os registos importados mostram um badge **Motion** e não podem ser apagados manualmente.
+4. Nunca duplica: usa `motion_task_id` único para upsert.
+
+### Configuração passo a passo
+
+**a) API Key do Motion**
+
+1. No Motion, vai a **Settings → API**.
+2. Cria uma nova API key e copia-a.
+
+**b) Guardar como secret no Supabase**
 
 ```bash
-npm run build
-# output em dist/
-npm run preview   # testar o build localmente
+# Instala o Supabase CLI se não tiveres
+brew install supabase/tap/supabase   # macOS
+# ou: npm install -g supabase
+
+supabase login
+supabase link --project-ref <ref-do-teu-projeto>
+
+supabase secrets set MOTION_API_KEY=<a-tua-api-key>
 ```
 
-Para deploy, faz upload da pasta `dist/` a qualquer hosting estático (Vercel, Netlify, Cloudflare Pages, etc.).  
-Lembra-te de configurar as variáveis de ambiente `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no painel do teu provider.
+**c) Deploy da Edge Function**
 
----
+```bash
+supabase functions deploy sync-motion
+```
 
-## Lógica de semanas
+**d) Ativar o cron (sincronização automática)**
 
-As semanas vão de **quarta-feira a terça-feira**. Qualquer data selecionada é automaticamente convertida para a quarta-feira que inicia essa semana. O campo `week` na base de dados guarda sempre a data da quarta.
-
-## Fator de eficiência
-
-Configurado em `settings.efficiency_factor` (default 0.85). Representa a percentagem das horas contratuais que é efetivamente produtiva (reuniões, overhead, etc.).  
-Para alterar, corre no SQL Editor:
+No SQL Editor do Supabase:
 
 ```sql
-update settings set efficiency_factor = 0.80 where id = 1;
+-- Ativa a extensão pg_cron (só é necessário uma vez)
+create extension if not exists pg_cron;
+
+-- Sincroniza todos os dias às 08:00 UTC
+select cron.schedule(
+  'sync-motion-daily',
+  '0 8 * * *',
+  $$
+    select net.http_post(
+      url := 'https://<ref>.supabase.co/functions/v1/sync-motion',
+      headers := '{"Authorization": "Bearer <SERVICE_ROLE_KEY>"}'::jsonb
+    )
+  $$
+);
 ```
+
+Substitui `<ref>` e `<SERVICE_ROLE_KEY>` pelos valores em **Project Settings → API**.
+
+**e) Mapear workspaces**
+
+1. Abre o painel Admin (⚙) → tab **Motion**.
+2. Clica **Sincronizar agora** — isto descobre os workspaces do Motion.
+3. Para cada workspace Motion, seleciona o workspace correspondente do Capacity Planner.
+
+**f) Adicionar emails às pessoas**
+
+1. Admin → tab **Pessoas** → edita cada pessoa e preenche o email.
+2. O email deve ser igual ao usado no Motion.
+
+### Sincronização manual
+
+No painel Admin → tab **Motion** → botão **Sincronizar agora**.
+
+Mostra o resultado: registos importados, workspaces sem mapeamento, assignees sem email configurado.
 
 ---
 
 ## Stack
 
-| Camada     | Tecnologia                       |
-|------------|----------------------------------|
-| Frontend   | React 18 + TypeScript + Vite     |
-| Estilos    | Tailwind CSS                     |
-| Gráficos   | Recharts                         |
-| Base dados | Supabase (PostgreSQL)            |
-| Fetching   | TanStack Query (React Query v5)  |
+| Camada     | Tecnologia                                    |
+|------------|-----------------------------------------------|
+| Frontend   | React 18 + TypeScript + Vite                  |
+| Estilos    | Tailwind CSS                                  |
+| Gráficos   | Recharts                                      |
+| Base dados | Supabase (PostgreSQL)                         |
+| Fetching   | TanStack Query v5                             |
+| Sync       | Supabase Edge Function (Deno) + cron diário   |
