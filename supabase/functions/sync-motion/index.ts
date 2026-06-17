@@ -1,7 +1,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const MOTION_BASE = 'https://api.usemotion.com/v1'
-const RATE_LIMIT_DELAY_MS = 300  // pausa entre páginas para respeitar rate limits
+const RATE_LIMIT_DELAY_MS = 300
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Authorization, Content-Type, apikey, x-client-info',
+}
 
 // ─── Tipos da API Motion ─────────────────────────────────────────────────────
 
@@ -69,9 +75,13 @@ function sleep(ms: number) {
 // ─── Handler principal ───────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
-  // Permite chamadas manuais e agendadas (cron)
+  // Preflight CORS
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { status: 200, headers: CORS_HEADERS })
+  }
+
   if (req.method !== 'POST' && req.method !== 'GET') {
-    return new Response('Method not allowed', { status: 405 })
+    return new Response('Method not allowed', { status: 405, headers: CORS_HEADERS })
   }
 
   const supabase = createClient(
@@ -229,6 +239,6 @@ Deno.serve(async (req) => {
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body, null, 2), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
   })
 }
