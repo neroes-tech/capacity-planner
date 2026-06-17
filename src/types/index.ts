@@ -2,6 +2,7 @@ export interface Person {
   id: string
   name: string
   weekly_hours: number
+  email: string | null
 }
 
 export interface Workspace {
@@ -31,4 +32,11 @@ export interface EntryWithRelations extends Entry {
 export interface Settings {
   id: number
   efficiency_factor: number
+}
+
+export interface WeeklyObjective {
+  id: string
+  week: string
+  workspace_id: string
+  target_pct: number
 }

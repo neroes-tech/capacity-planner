@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { toDateString, addDays, parseDateString } from '../lib/utils'
-import type { Person, Workspace, Settings, EntryWithRelations } from '../types'
+import type { Person, Workspace, Settings, EntryWithRelations, WeeklyObjective } from '../types'
 
 // ─── Queries ────────────────────────────────────────────────────────────────
 
@@ -58,7 +58,7 @@ export function useWeekEntries(week: string) {
         .from('entries')
         .select(`
           *,
-          person:people(id, name, weekly_hours),
+          person:people(id, name, weekly_hours, email),
           workspace:workspaces(id, name, short_name, color, team_objective_pct)
         `)
         .eq('week', week)
@@ -84,7 +84,21 @@ export function useAllRealEntries() {
   })
 }
 
-// ─── Mutations ───────────────────────────────────────────────────────────────
+export function useWeeklyObjectives(week: string) {
+  return useQuery<WeeklyObjective[]>({
+    queryKey: ['weekly_objectives', week],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('weekly_objectives')
+        .select('*')
+        .eq('week', week)
+      if (error) throw error
+      return data ?? []
+    },
+  })
+}
+
+// ─── Entry Mutations ─────────────────────────────────────────────────────────
 
 interface NewEntry {
   week: string
@@ -137,9 +151,8 @@ export function useGenerateNextWeekPlan() {
         .eq('tipo', 'Real')
 
       if (fetchErr) throw fetchErr
-      if (!realEntries || realEntries.length === 0) {
+      if (!realEntries || realEntries.length === 0)
         throw new Error('Não há registos Reais nesta semana para copiar.')
-      }
 
       const { error: delErr } = await supabase
         .from('entries')
@@ -148,16 +161,16 @@ export function useGenerateNextWeekPlan() {
         .eq('tipo', 'Planeado')
       if (delErr) throw delErr
 
-      const newEntries = realEntries.map((e) => ({
-        week: nextWeek,
-        person_id: e.person_id,
-        workspace_id: e.workspace_id,
-        tipo: 'Planeado' as const,
-        hours: e.hours,
-        note: e.note,
-      }))
-
-      const { error: insErr } = await supabase.from('entries').insert(newEntries)
+      const { error: insErr } = await supabase.from('entries').insert(
+        realEntries.map((e) => ({
+          week: nextWeek,
+          person_id: e.person_id,
+          workspace_id: e.workspace_id,
+          tipo: 'Planeado' as const,
+          hours: e.hours,
+          note: e.note,
+        })),
+      )
       if (insErr) throw insErr
 
       return nextWeek
@@ -165,5 +178,119 @@ export function useGenerateNextWeekPlan() {
     onSuccess: (nextWeek) => {
       qc.invalidateQueries({ queryKey: ['entries', nextWeek] })
     },
+  })
+}
+
+// ─── People Mutations ────────────────────────────────────────────────────────
+
+type PersonInput = Pick<Person, 'name' | 'weekly_hours'> & { email?: string | null }
+
+export function useAddPerson() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: PersonInput) => {
+      const { error } = await supabase.from('people').insert(data)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['people'] }),
+  })
+}
+
+export function useUpdatePerson() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, ...data }: Partial<PersonInput> & { id: string }) => {
+      const { error } = await supabase.from('people').update(data).eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['people'] }),
+  })
+}
+
+export function useDeletePerson() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('people').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['people'] }),
+  })
+}
+
+// ─── Workspace Mutations ─────────────────────────────────────────────────────
+
+type WorkspaceInput = Omit<Workspace, 'id'>
+
+export function useAddWorkspace() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: WorkspaceInput) => {
+      const { error } = await supabase.from('workspaces').insert(data)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['workspaces'] }),
+  })
+}
+
+export function useUpdateWorkspace() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, ...data }: Partial<WorkspaceInput> & { id: string }) => {
+      const { error } = await supabase.from('workspaces').update(data).eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['workspaces'] }),
+  })
+}
+
+export function useDeleteWorkspace() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('workspaces').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['workspaces'] }),
+  })
+}
+
+// ─── Weekly Objectives Mutations ─────────────────────────────────────────────
+
+export function useUpsertWeeklyObjectives() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      week,
+      objectives,
+    }: {
+      week: string
+      objectives: { workspace_id: string; target_pct: number }[]
+    }) => {
+      const rows = objectives.map((o) => ({ week, ...o }))
+      const { error } = await supabase
+        .from('weekly_objectives')
+        .upsert(rows, { onConflict: 'week,workspace_id' })
+      if (error) throw error
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ['weekly_objectives', vars.week] })
+    },
+  })
+}
+
+// ─── Settings Mutation ───────────────────────────────────────────────────────
+
+export function useUpdateSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (efficiency_factor: number) => {
+      const { error } = await supabase
+        .from('settings')
+        .update({ efficiency_factor })
+        .eq('id', 1)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['settings'] }),
   })
 }
