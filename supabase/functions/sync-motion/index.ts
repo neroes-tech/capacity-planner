@@ -97,31 +97,36 @@ Deno.serve(async (req) => {
     return json({ error: 'MOTION_API_KEY não configurada nos secrets do Supabase.' }, 500)
   }
 
-  // Modo debug: devolve tarefas brutas do Motion + pessoas da BD
+  // Modo debug: tenta buscar tarefas concluídas de todos os workspaces mapeados
   if (debug) {
     const { data: people } = await supabase.from('people').select('id, name, email')
+    const { data: mappings } = await supabase.from('motion_mappings').select('*')
     const { workspaces: motionWorkspaces } = await motionFetch('/workspaces', MOTION_API_KEY)
 
+    const mappedIds = new Set((mappings ?? []).filter(m => m.planner_workspace_id).map(m => m.motion_workspace_id))
     const taskSamples: unknown[] = []
-    for (const mws of motionWorkspaces.slice(0, 3)) {
+
+    for (const mws of motionWorkspaces.filter(w => mappedIds.has(w.id))) {
+      const attempts: unknown[] = []
+
+      // Tentativa 1: status=completed
       try {
-        const { tasks } = await motionFetch('/tasks', MOTION_API_KEY, { workspaceId: mws.id })
-        const sample = (tasks ?? []).slice(0, 3).map((t: MotionTask) => ({
-          id: t.id,
-          name: t.name,
-          status: t.status,
-          duration: t.duration,
-          completedTime: t.completedTime,
-          assignees: t.assignees,
-          workspaceId: t.workspaceId,
-        }))
-        taskSamples.push({ workspace: mws.name, tasks: sample })
-      } catch (e) {
-        taskSamples.push({ workspace: mws.name, error: String(e) })
-      }
+        const r1 = await motionFetch('/tasks', MOTION_API_KEY, { workspaceId: mws.id, status: 'completed' })
+        attempts.push({ filter: 'status=completed', count: r1.tasks?.length ?? 0, sample: (r1.tasks ?? []).slice(0, 2).map((t: MotionTask) => ({ name: t.name, status: t.status, duration: t.duration, completedTime: t.completedTime })) })
+      } catch (e) { attempts.push({ filter: 'status=completed', error: String(e) }) }
+
+      // Tentativa 2: sem filtro (padrão)
+      try {
+        const r2 = await motionFetch('/tasks', MOTION_API_KEY, { workspaceId: mws.id })
+        const withCompleted = (r2.tasks ?? []).filter((t: MotionTask) => t.completedTime || t.status?.isResolvedStatus)
+        attempts.push({ filter: 'default', totalTasks: r2.tasks?.length ?? 0, withCompletedTime: withCompleted.length, sample: withCompleted.slice(0, 2) })
+      } catch (e) { attempts.push({ filter: 'default', error: String(e) }) }
+
+      taskSamples.push({ workspace: mws.name, attempts })
+      await sleep(300)
     }
 
-    return json({ debug: true, people, motionWorkspaces, taskSamples })
+    return json({ debug: true, people, taskSamples })
   }
 
   const result: SyncResult = {
