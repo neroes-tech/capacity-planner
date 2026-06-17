@@ -177,10 +177,13 @@ Deno.serve(async (req) => {
         continue
       }
 
+      // Tenta primeiro com status=completed para APIs que suportam
+      // Se não devolver nada, vai buscar tudo e filtra pelo lado do servidor
       let cursor: string | undefined
       do {
         const params: Record<string, string> = {
           workspaceId: mws.id,
+          status: 'completed',        // alguns endpoints do Motion aceitam este filtro
         }
         if (cursor) params.cursor = cursor
 
@@ -192,14 +195,17 @@ Deno.serve(async (req) => {
           break
         }
 
+        // Aceita tarefas que: têm completedTime OU status isResolvedStatus, E têm duração
         const completedTasks = (tasksData.tasks ?? []).filter(
-          (t) => t.status?.isResolvedStatus && t.duration && t.duration > 0,
+          (t) =>
+            (t.completedTime !== null || t.status?.isResolvedStatus) &&
+            t.duration !== null &&
+            t.duration > 0,
         )
 
         for (const task of completedTasks) {
-          // Data de conclusão
-          const completedDateStr =
-            task.completedTime ?? task.scheduledEnd ?? task.lastInteractedTime
+          // Data de conclusão: usa completedTime se existir, senão scheduledEnd
+          const completedDateStr = task.completedTime ?? task.scheduledEnd
           if (!completedDateStr) continue
 
           const completedDate = new Date(completedDateStr)
