@@ -84,6 +84,9 @@ Deno.serve(async (req) => {
     return new Response('Method not allowed', { status: 405, headers: CORS_HEADERS })
   }
 
+  const url = new URL(req.url)
+  const debug = url.searchParams.get('debug') === '1'
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -92,6 +95,33 @@ Deno.serve(async (req) => {
   const MOTION_API_KEY = Deno.env.get('MOTION_API_KEY')
   if (!MOTION_API_KEY) {
     return json({ error: 'MOTION_API_KEY não configurada nos secrets do Supabase.' }, 500)
+  }
+
+  // Modo debug: devolve tarefas brutas do Motion + pessoas da BD
+  if (debug) {
+    const { data: people } = await supabase.from('people').select('id, name, email')
+    const { workspaces: motionWorkspaces } = await motionFetch('/workspaces', MOTION_API_KEY)
+
+    const taskSamples: unknown[] = []
+    for (const mws of motionWorkspaces.slice(0, 3)) {
+      try {
+        const { tasks } = await motionFetch('/tasks', MOTION_API_KEY, { workspaceId: mws.id })
+        const sample = (tasks ?? []).slice(0, 3).map((t: MotionTask) => ({
+          id: t.id,
+          name: t.name,
+          status: t.status,
+          duration: t.duration,
+          completedTime: t.completedTime,
+          assignees: t.assignees,
+          workspaceId: t.workspaceId,
+        }))
+        taskSamples.push({ workspace: mws.name, tasks: sample })
+      } catch (e) {
+        taskSamples.push({ workspace: mws.name, error: String(e) })
+      }
+    }
+
+    return json({ debug: true, people, motionWorkspaces, taskSamples })
   }
 
   const result: SyncResult = {
