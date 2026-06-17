@@ -21,6 +21,8 @@ export interface Entry {
   tipo: 'Real' | 'Planeado'
   hours: number
   note: string | null
+  source: 'manual' | 'motion'
+  motion_task_id: string | null
   created_at: string
 }
 
@@ -39,4 +41,21 @@ export interface WeeklyObjective {
   week: string
   workspace_id: string
   target_pct: number
+}
+
+export interface MotionMapping {
+  id: string
+  motion_workspace_id: string
+  motion_workspace_name: string
+  planner_workspace_id: string | null
+  created_at: string
+}
+
+export interface SyncResult {
+  success: boolean
+  imported: number
+  updated: number
+  unmappedWorkspaces: string[]
+  unknownAssignees: string[]
+  errors: string[]
 }
