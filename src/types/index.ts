@@ -21,7 +21,7 @@ export interface Entry {
   tipo: 'Real' | 'Planeado'
   hours: number
   note: string | null
-  source: 'manual' | 'motion'
+  source: 'manual' | 'motion' | 'gcal'
   motion_task_id: string | null
   created_at: string
 }
@@ -58,4 +58,47 @@ export interface SyncResult {
   unmappedWorkspaces: string[]
   unknownAssignees: string[]
   errors: string[]
+}
+
+export interface RecurringMapping {
+  id: string
+  recurring_event_id: string
+  summary: string | null
+  planner_workspace_id: string | null
+  is_personal: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkspaceColor {
+  id: string
+  color_id: string
+  planner_workspace_id: string | null
+  created_at: string
+}
+
+export interface EventOverride {
+  id: string
+  event_id: string
+  planner_workspace_id: string | null
+  created_at: string
+}
+
+export interface SyncGcalResult {
+  success: boolean
+  dryRun: boolean
+  week: string
+  imported: number
+  updated: number
+  skippedMotionBlocks: number
+  skippedCancelled: number
+  skippedAllDay: number
+  skippedTransparent: number
+  skippedPersonal: number
+  unmappedRecurring: Array<{ recurring_event_id: string; summary: string | null; sampleStart: string }>
+  unclassifiedOneOffs: Array<{ event_id: string; summary: string | null; start: string; colorId: string | null }>
+  externalAttendeesIgnored: number
+  unknownAttendees: string[]
+  errors: string[]
+  note?: string
 }

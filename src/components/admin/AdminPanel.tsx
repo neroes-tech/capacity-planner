@@ -5,14 +5,16 @@ import WorkspacesAdmin from './WorkspacesAdmin'
 import WeeklyObjectivesAdmin from './WeeklyObjectivesAdmin'
 import SettingsAdmin from './SettingsAdmin'
 import MotionMappingAdmin from './MotionMappingAdmin'
+import CalendarMappingAdmin from './CalendarMappingAdmin'
 
-type Tab = 'pessoas' | 'workspaces' | 'objetivos' | 'motion' | 'definicoes'
+type Tab = 'pessoas' | 'workspaces' | 'objetivos' | 'motion' | 'calendario' | 'definicoes'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'pessoas',    label: 'Pessoas' },
   { id: 'workspaces', label: 'Workspaces' },
   { id: 'objetivos',  label: 'Objetivos' },
   { id: 'motion',     label: 'Motion' },
+  { id: 'calendario', label: 'Calendário' },
   { id: 'definicoes', label: 'Definições' },
 ]
 
@@ -69,6 +71,7 @@ export default function AdminPanel({ week, onClose }: Props) {
           {activeTab === 'workspaces' && <WorkspacesAdmin />}
           {activeTab === 'objetivos'  && <WeeklyObjectivesAdmin currentWeek={week} />}
           {activeTab === 'motion'     && <MotionMappingAdmin />}
+          {activeTab === 'calendario' && <CalendarMappingAdmin />}
           {activeTab === 'definicoes' && <SettingsAdmin />}
         </div>
       </div>

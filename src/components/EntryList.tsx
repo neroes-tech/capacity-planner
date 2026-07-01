@@ -67,6 +67,17 @@ function MotionBadge() {
   )
 }
 
+function GCalBadge() {
+  return (
+    <span
+      title="Importado do Google Calendar"
+      className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#1B7F8E]/10 text-[#1B7F8E] shrink-0"
+    >
+      Cal
+    </span>
+  )
+}
+
 function EntryGroup({
   title, entries, week, onDelete,
 }: {
@@ -85,6 +96,8 @@ function EntryGroup({
       <ul className="space-y-1" aria-label={`Registos ${title}`}>
         {entries.map((entry) => {
           const isMotion = entry.source === 'motion'
+          const isGcal   = entry.source === 'gcal'
+          const isAuto   = isMotion || isGcal
           return (
             <li key={entry.id}
               className="flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-3 py-2 text-sm">
@@ -93,12 +106,13 @@ function EntryGroup({
               <span className="font-medium text-[#1E2B26] shrink-0">{entry.person.name}</span>
               <span className="text-gray-500 truncate flex-1">{entry.workspace.short_name}</span>
               {isMotion && <MotionBadge />}
+              {isGcal   && <GCalBadge />}
               <span className="tabular-nums font-semibold text-[#1E2B26] shrink-0">
                 {entry.hours} h
               </span>
 
-              {/* Botão apagar — registos Motion não se apagam manualmente */}
-              {isMotion ? (
+              {/* Botão apagar — registos automáticos não se apagam manualmente */}
+              {isAuto ? (
                 <span className="ml-1 w-4 h-4 shrink-0" aria-hidden="true" />
               ) : confirmId === entry.id ? (
                 <div className="flex gap-1 shrink-0">

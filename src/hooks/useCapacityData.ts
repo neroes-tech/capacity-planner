@@ -4,6 +4,7 @@ import { toDateString, addDays, parseDateString } from '../lib/utils'
 import type {
   Person, Workspace, Settings, EntryWithRelations,
   WeeklyObjective, MotionMapping, SyncResult,
+  RecurringMapping, WorkspaceColor, EventOverride, SyncGcalResult,
 } from '../types'
 
 // ─── Queries ────────────────────────────────────────────────────────────────
@@ -308,6 +309,110 @@ export function useSyncMotion() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['entries'] })
       qc.invalidateQueries({ queryKey: ['motion_mappings'] })
+    },
+  })
+}
+
+// ─── GCal Queries ─────────────────────────────────────────────────────────────
+
+export function useRecurringMappings() {
+  return useQuery<RecurringMapping[]>({
+    queryKey: ['recurring_mappings'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('recurring_mappings')
+        .select('*')
+        .order('summary')
+      if (error) throw error
+      return data ?? []
+    },
+  })
+}
+
+export function useWorkspaceColors() {
+  return useQuery<WorkspaceColor[]>({
+    queryKey: ['workspace_colors'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('workspace_colors').select('*')
+      if (error) throw error
+      return data ?? []
+    },
+  })
+}
+
+export function useEventOverrides() {
+  return useQuery<EventOverride[]>({
+    queryKey: ['event_overrides'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('event_overrides').select('*')
+      if (error) throw error
+      return data ?? []
+    },
+  })
+}
+
+// ─── GCal Mutations ──────────────────────────────────────────────────────────
+
+export function useUpsertRecurringMapping() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (row: {
+      recurring_event_id: string
+      planner_workspace_id: string | null
+      is_personal: boolean
+    }) => {
+      const { error } = await supabase
+        .from('recurring_mappings')
+        .upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: 'recurring_event_id' })
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['recurring_mappings'] }),
+  })
+}
+
+export function useUpsertWorkspaceColor() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (row: { color_id: string; planner_workspace_id: string | null }) => {
+      const { error } = await supabase
+        .from('workspace_colors')
+        .upsert(row, { onConflict: 'color_id' })
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['workspace_colors'] }),
+  })
+}
+
+export function useUpsertEventOverride() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (row: { event_id: string; planner_workspace_id: string | null }) => {
+      const { error } = await supabase
+        .from('event_overrides')
+        .upsert(row, { onConflict: 'event_id' })
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['event_overrides'] }),
+  })
+}
+
+// ─── GCal Sync ────────────────────────────────────────────────────────────────
+
+export function useSyncGcal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ dryRun = false, week }: { dryRun?: boolean; week?: string } = {}): Promise<SyncGcalResult> => {
+      const body: Record<string, unknown> = { dryRun }
+      if (week) body.week = week
+      const { data, error } = await supabase.functions.invoke('sync-gcal', { body })
+      if (error) throw error
+      return data as SyncGcalResult
+    },
+    onSuccess: (_data, vars) => {
+      if (!vars?.dryRun) {
+        qc.invalidateQueries({ queryKey: ['entries'] })
+        qc.invalidateQueries({ queryKey: ['recurring_mappings'] })
+      }
     },
   })
 }
